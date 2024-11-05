@@ -10,6 +10,15 @@ router.get('/test', (req, res) => {
     res.json({ message: 'News routes are working' });
 });
 
+router.get('/news', async (req, res) => {
+    try {
+        const news = await News.find();
+        res.json(news);
+    } catch (error) {
+        console.error('Error fetching news:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
 
 // Votre route POST existante pour créer une news
 router.post('/', async (req, res) => {

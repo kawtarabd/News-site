@@ -1,6 +1,8 @@
 import React from 'react';
 import { Card, CardContent, CardActions, Typography, Button } from '@mui/material';
 import newsService from '../../services/newsService';
+import { format } from 'date-fns';
+
 
 const NewsCard = ({ news }) => {
   const handleLike = async () => {
@@ -19,6 +21,9 @@ const NewsCard = ({ news }) => {
         <Typography variant="h5">{news.title}</Typography>
         <Typography variant="body2" color="textSecondary">
           {news.url}
+        </Typography>
+        <Typography variant="body2" color="textSecondary">
+          Posted on: {format(new Date(news.date), 'dd/MM/yyyy HH:mm')}
         </Typography>
         <Typography variant="body2">
           Likes: {news.likes.length} | Dislikes: {news.dislikes.length}

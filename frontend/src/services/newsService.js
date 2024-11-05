@@ -14,7 +14,10 @@ const newsService = {
   },
 
   async addNews(newsData) {
-    const response = await axios.post(`${API_URL}/news`, newsData, {
+    const response = await axios.post(`${API_URL}/news`, {
+      ...newsData,
+      date: new Date()
+    }, {
       headers: getAuthHeader()
     });
     return response.data;

@@ -19,14 +19,18 @@ exports.getNews = asyncHandler(async (req, res, next) => {
 // @route   POST /api/news
 // @access  Private
 exports.createNews = asyncHandler(async (req, res, next) => {
-  // Add user to req.body
-  req.body.user = req.user.id;
-
-  const news = await News.create(req.body);
+  const { title, url } = req.body;
+  
+  const news = await News.create({
+    title,
+    url,
+    date: new Date(),
+    user: req.user.id
+  });
 
   res.status(201).json({
     success: true,
-    data: news,
+    data: news
   });
 });
 

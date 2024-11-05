@@ -10,6 +10,10 @@ const newsSchema = new mongoose.Schema({
         required: [true, 'Please add a URL'],
         unique: true
     },
+    date: {
+        type: Date,
+        default: Date.now
+    },
     user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
