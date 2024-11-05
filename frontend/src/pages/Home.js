@@ -8,7 +8,6 @@ const Home = () => {
   const [news, setNews] = useState([]);
   const [loading, setLoading] = useState(true);
 
-   ```jsx
   useEffect(() => {
     const fetchNews = async () => {
       try {
