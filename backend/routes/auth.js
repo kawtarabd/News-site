@@ -1,42 +1,49 @@
 const express = require('express');
 const router = express.Router();
-const User = require('../models/User');
+const { check, validationResult } = require('express-validator');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { protect } = require('../middleware/auth');
+const User = require('../models/User');
+const { register, login } = require('../controllers/authController')
 
-// Inscription
-router.post('/register', async (req, res) => {
-  try {
-    const { firstName, lastName, email, password } = req.body;
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: 'Cet email est déjà utilisé' });
+
+// @route   POST api/auth/register
+// @desc    Register user
+// @access  Public
+router.post('/register', [
+    check('firstName', 'Veuillez ajouter un prénom').not().isEmpty(),
+    check('lastName', 'Veuillez ajouter un nom').not().isEmpty(),
+    check('email', 'Veuillez ajouter un email valide').isEmail().normalizeEmail(),
+    check('password', 'Veuillez entrer un mot de passe de 6 caractères ou plus').isLength({ min: 6 })
+], register);
+
+// @route   POST api/auth/login
+// @desc    Authenticate user & get token
+// @access  Public
+router.post('/login', [
+  check('email', 'Veuillez inclure un email valide').isEmail().normalizeEmail(),
+  check('password', 'Le mot de passe est requis').exists()
+], login);
+
+// @route   GET api/auth/me
+// @desc    Get current user
+// @access  Private
+router.get('/me', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('-password');
+        res.json(user);
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).json({ msg: 'Server error' });
     }
-    const user = new User({ firstName, lastName, email, password });
-    await user.save();
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    res.status(201).json({ message: 'Utilisateur créé avec succès', token });
-  } catch (error) {
-    res.status(500).json({ message: 'Erreur lors de l\'inscription', error: error.message });
-  }
 });
 
-// Connexion
-router.post('/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ message: 'Email ou mot de passe incorrect' });
-    }
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(401).json({ message: 'Email ou mot de passe incorrect' });
-    }
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    res.json({ message: 'Connexion réussie', token });
-  } catch (error) {
-    res.status(500).json({ message: 'Erreur lors de la connexion', error: error.message });
-  }
-});
+// Helper function to generate JWT
+const generateToken = (userId) => {
+    return jwt.sign({ userId }, process.env.JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRE
+    });
+};
 
 module.exports = router;

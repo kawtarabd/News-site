@@ -1,50 +1,111 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-const connectDB = require('./config/db');
-const errorHandler = require('./middleware/error');
-const authRoutes = require('./routes/auth');
 const cors = require('cors');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const path = require('path');
+const rateLimit = require('express-rate-limit');
+const friendRoutes = require('./routes/friendRoutes');
 
-// Import routes
-const userRoutes = require('./routes/userRoutes');
-const newsRoutes = require('./routes/newsRoutes');
 
 // Load env vars
 dotenv.config();
 
-// Connect to database
-connectDB();
+// Import routes
+const newsRoutes = require('./routes/newsRoutes');
+const userRoutes = require('./routes/userRoutes');
+const authRoutes = require('./routes/auth');
 
+// Import error handler
+const errorHandler = require('./middleware/errorHandler');
+
+// Create Express app
 const app = express();
 
-// Body parser
+// Connect to database - Version simplifiée sans options dépréciées
+const connectDB = async () => {
+  try {
+    await mongoose.connect(process.env.MONGO_URI);
+    console.log('MongoDB Connected');
+  } catch (err) {
+    console.error('Failed to connect to MongoDB', err);
+    process.exit(1);
+  }
+};
+
+connectDB();
+
+// Middleware
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 app.use(cors({
-    origin: 'http://localhost:3000',
-    credentials: true
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  credentials: true
 }));
-// Enable CORS
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    next();
+app.use(helmet());
+
+// Only use morgan in development
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
+}
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100 // limit each IP to 100 requests per windowMs
 });
+app.use('/api', limiter);
+
+// Set static folder
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Mount routes
-app.use('/api/users', userRoutes);
 app.use('/api/news', newsRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api', friendRoutes);
 
 // Test route
-app.get('/', (req, res) => {
-    res.send('API is running...');
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'API is working' });
 });
 
-// Error handler middleware
+// Handle production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static('client/build'));
+  app.get('*', (req, res) => {
+    res.sendFile(path.resolve(__dirname, 'client', 'build', 'index.html'));
+  });
+}
+
+// Error handling middleware
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err, promise) => {
+  console.log(`Error: ${err.message}`);
+  if (server) {
+    server.close(() => process.exit(1));
+  } else {
+    process.exit(1);
+  }
 });
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.log(`Error: ${err.message}`);
+  if (server) {
+    server.close(() => process.exit(1));
+  } else {
+    process.exit(1);
+  }
+});
+
+const PORT = process.env.PORT || 5001;
+
+const server = app.listen(PORT, () => {
+  console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+});
+
+module.exports = server;

@@ -1,114 +1,138 @@
-const News = require('../models/News');
-const ErrorResponse = require('../utils/errorResponse');
+const News = require('../models/News'); 
 const asyncHandler = require('../middleware/async');
+const { validationResult } = require('express-validator');
 
-// @desc    Get all news
-// @route   GET /api/news
-// @access  Public
-exports.getNews = asyncHandler(async (req, res, next) => {
-  const news = await News.find().populate('user', 'name');
+// Fonction pour créer une nouvelle actualité
+const createNews = async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, errors: errors.array() });
+    }
 
-  res.status(200).json({
-    success: true,
-    count: news.length,
-    data: news,
-  });
+    if (!req.user || !req.user._id) {
+        return res.status(401).json({ success: false, message: "Authentification requise" });
+    }
+
+    const { title, url, content, tags } = req.body;
+
+    const newNews = new News({
+        title,
+        url,
+        content,
+        tags: tags || [], // Initialiser les tags à un tableau vide si non fournis
+        author: req.user._id // Assurez-vous que l'utilisateur est authentifié
+    });
+
+    try {
+        const savedNews = await newNews.save();
+        res.status(201).json({ success: true, data: savedNews });
+    } catch (error) {
+        console.error('Erreur lors de la création de la news:', error);
+        res.status(500).json({ success: false, message: 'Erreur serveur lors de la création de la news' });
+    }
+};
+
+
+// Récupérer toutes les actualités
+const getAllNews = asyncHandler(async (req, res) => {
+    const news = await News.find();
+    res.status(200).json({ success: true, data: news });
 });
 
-// @desc    Create new news
-// @route   POST /api/news
-// @access  Private
-exports.createNews = asyncHandler(async (req, res, next) => {
-  const { title, url } = req.body;
-  
-  const news = await News.create({
-    title,
-    url,
-    date: new Date(),
-    user: req.user.id
-  });
+// Gérer les likes
+const likeNews = asyncHandler(async (req, res) => {
+    const newsId = req.params.id; // ID de l'actualité à aimer
 
-  res.status(201).json({
-    success: true,
-    data: news
-  });
+    const news = await News.findById(newsId);
+    if (!news) {
+        return res.status(404).json({ success: false, message: 'News non trouvée' });
+    }
+
+    // Check if the user has already liked the news
+    if (news.likes.includes(req.user._id)) {
+        return res.status(400).json({ success: false, message: 'Vous avez déjà aimé cette actualité' });
+    }
+
+    // Add user ID to likes and save
+    news.likes.push(req.user._id);
+    await news.save();
+
+    res.status(200).json({ success: true, data: news.likes });
 });
 
-// @desc    Like news
-// @route   PUT /api/news/:id/like
-// @access  Private
-exports.likeNews = asyncHandler(async (req, res, next) => {
-  let news = await News.findById(req.params.id);
+// Gérer les dislikes
+const dislikeNews = asyncHandler(async (req, res) => {
+    const newsId = req.params.id; // ID de l'actualité à ne pas aimer
 
-  if (!news) {
-    return next(new ErrorResponse(`News not found with id of ${req.params.id}`, 404));
-  }
+    const news = await News.findById(newsId);
+    if (!news) {
+        return res.status(404).json({ success: false, message: 'News non trouvée' });
+    }
 
-  if (news.likes.includes(req.user.id)) {
-    return next(new ErrorResponse(`You have already liked this news`, 400));
-  }
+    // Check if the user has already disliked the news
+    if (news.dislikes.includes(req.user._id)) {
+        return res.status(400).json({ success: false, message: 'Vous avez déjà détesté cette actualité' });
+    }
 
-  news.likes.push(req.user.id);
-  news.dislikes = news.dislikes.filter(
-    (userId) => userId.toString() !== req.user.id.toString()
-  );
+    // Add user ID to dislikes and save
+    news.dislikes.push(req.user._id);
+    await news.save();
 
-  news = await news.save();
-
-  res.status(200).json({
-    success: true,
-    data: news,
-  });
+    res.status(200).json({ success: true, data: news.dislikes });
 });
 
-// @desc    Dislike news
-// @route   PUT /api/news/:id/dislike
-// @access  Private
-exports.dislikeNews = asyncHandler(async (req, res, next) => {
-  let news = await News.findById(req.params.id);
+// Ajouter un commentaire
+const addComment = asyncHandler(async (req, res) => {
+    const newsId = req.params.id;
 
-  if (!news) {
-    return next(new ErrorResponse(`News not found with id of ${req.params.id}`, 404));
-  }
+    if (!req.body.text) {
+        return res.status(400).json({ success: false, message: 'Le texte du commentaire est requis' });
+    }
 
-  if (news.dislikes.includes(req.user.id)) {
-    return next(new ErrorResponse(`You have already disliked this news`, 400));
-  }
+    const commentData = {
+        user: req.user._id,
+        text: req.body.text, // Utilisez `text` pour le contenu du commentaire
+    };
 
-  news.dislikes.push(req.user.id);
-  news.likes = news.likes.filter(
-    (userId) => userId.toString() !== req.user.id.toString()
-  );
+    const news = await News.findById(newsId);
+    if (!news) {
+        return res.status(404).json({ success: false, message: 'News non trouvée' });
+    }
 
-  news = await news.save();
+    news.comments.push(commentData);
+    await news.save();
 
-  res.status(200).json({
-    success: true,
-    data: news,
-  });
+    res.status(200).json({
+        success: true,
+        data: news.comments,
+    });
 });
 
-// @desc    Add comment to news
-// @route   POST /api/news/:id/comments
-// @access  Private
-exports.addComment = asyncHandler(async (req, res, next) => {
-  const news = await News.findById(req.params.id);
 
-  if (!news) {
-    return next(new ErrorResponse(`News not found with id of ${req.params.id}`, 404));
-  }
-
-  const comment = { ```javascript
-    user: req.user.id,
-    text: req.body.text,
-  };
-
-  news.comments.push(comment);
-  await news.save();
-
-  res.status(201).json({
-    success: true,
-    data: news.comments,
-  });
- 
+// Récupérer une actualité par ID
+const getNewsById = asyncHandler(async (req, res) => {
+    const news = await News.findById(req.params.id).populate('author', 'firstName lastName');
+    if (!news) return res.status(404).json({ message: 'News non trouvée' });
+    res.json({
+        success: true,
+        data: {
+            url: news.url,
+            author: news.author,
+            title: news.title,
+            dateAdded: news.createdAt,
+            likes: news.likes.length,
+            dislikes: news.dislikes.length,
+            comments: news.comments
+        }
+    });
 });
+
+// Exporter les fonctions
+module.exports = {
+    createNews,
+    getAllNews,
+    likeNews,
+    dislikeNews,
+    addComment,
+    getNewsById
+};
